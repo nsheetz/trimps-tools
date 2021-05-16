@@ -149,6 +149,8 @@ const PerkInfo Perks::perk_info_u2[] =
 	{ "artisanistry", 15, PerkInfo::MULTIPLICATIVE, 1.3, 0 },
 	{ "carpentry", 25, PerkInfo::MULTIPLICATIVE, 1.3, 0 },
 	{ "equality", 1, PerkInfo::MULTIPLICATIVE, 1.5, 0 },
+	{ "criticality", 100, PerkInfo::MULTIPLICATIVE, 1.3, 0 },
+	{ "resilience", 100, PerkInfo::MULTIPLICATIVE, 1.3, 0 },
 	{ 0, 0, PerkInfo::ADDITIVE, 0, 0 }
 };
 
@@ -222,18 +224,19 @@ int Perks::main()
 	double best_score = 0;
 	unsigned best_gators = 0;
 	LevelMap best_levels;
-	for(unsigned i=0; i<10; ++i)
+	for(unsigned i=0; i<15; )
 	{
 		amalgamators = i;
-		Number carp = get_perk("carpentry")/2;
-		Number carp2 = get_perk("carpentry2")/2;
-		Number coord = get_perk("coordinated")/2;
+		Number carp = get_perk("carpentry");
+		Number carp2 = get_perk("carpentry2");
+		Number coord = get_perk("coordinated");
 		perk_levels = base_levels;
 		perk_levels["carpentry"] = max(perk_levels["carpentry"], carp);
 		perk_levels["carpentry2"] = max(perk_levels["carpentry2"], carp2);
 		perk_levels["coordinated"] = max(perk_levels["coordinated"], coord);
 		optimize();
-		double score = evaluate();
+		EvalStats stats;
+		double score = evaluate(stats);
 		if(score>best_score)
 		{
 			best_score = score;
@@ -242,6 +245,8 @@ int Perks::main()
 		}
 		else if(score<best_score*0.99)
 			break;
+
+		i += max(floor(log(stats.population/stats.army/3)/log(1e3)), 1.0);
 	}
 
 	amalgamators = best_gators;
@@ -388,7 +393,7 @@ double Perks::evaluate_u1(EvalStats &stats, bool fractional) const
 	stats.army *= amal_factor;
 
 	double coords = stats.coordinations;
-	if(fractional && coords<max_coords)
+	if(fractional && coords<max_coords && stats.population>stats.army*reserve_factor)
 	{
 		coords += log(stats.population/reserve_factor/stats.army)/log(coord_factor);
 		coords = min<double>(coords, max_coords);
@@ -412,6 +417,8 @@ double Perks::evaluate_u1(EvalStats &stats, bool fractional) const
 		stats.production *= 2;
 	// Whipimp
 	stats.production *= imp_ort;
+	// Turkimp
+	stats.production *= 2;
 
 	double speed = 1/pow(0.95, get_perk("agility"));
 
@@ -534,7 +541,7 @@ double Perks::evaluate_u2(EvalStats &stats, bool fractional) const
 	}
 
 	double coords = stats.coordinations;
-	if(fractional && coords<max_coords)
+	if(fractional && coords<max_coords && stats.population>stats.army*reserve_factor)
 	{
 		coords += log(stats.population/reserve_factor/stats.army)/log(coord_factor);
 		coords = min<double>(coords, max_coords);
@@ -546,12 +553,14 @@ double Perks::evaluate_u2(EvalStats &stats, bool fractional) const
 	stats.production *= 1+0.05*get_perk("motivation");
 	stats.production *= 1+0.01*heirloom.miner;
 	// Speed books
-	stats.production *= pow(1.25, min(target_zone, 59U));
+	stats.production *= pow(1.25, target_zone);
 	// Bounty
-	if(target_zone>=11)
+	if(target_zone>=7)
 		stats.production *= 2;
 	// Whipimp
 	stats.production *= imp_ort;
+	// Turkimp
+	stats.production *= 2;
 
 	double speed = 1/pow(0.95, get_perk("agility"));
 
@@ -600,12 +609,14 @@ double Perks::evaluate_u2(EvalStats &stats, bool fractional) const
 	stats.health *= 1+challenge2*0.01;
 	stats.health *= 1+heirloom.health*0.01;
 
+	Number crit = get_perk("criticality");
+
 	stats.attack = 6;
 	stats.attack += (2+3+4+7+9+15)*pow(1.19, 13*(stats.prestige_level-1))*affordable_level;
 	stats.attack *= coord_stats;
 	stats.attack *= 1+0.05*get_perk("power");
 	stats.attack *= 1+0.01*get_perk("range");
-	stats.attack *= 1+(0.01*heirloom.crit_chance)*(1+0.01*heirloom.crit_damage);
+	stats.attack *= 1+min(0.01*heirloom.crit_chance, 1.0)*(1+0.01*heirloom.crit_damage+0.1*crit);
 	stats.attack *= equality;
 	stats.attack *= 1+achievements*0.01;
 	stats.attack *= 1+challenge2*0.01;
